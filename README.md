@@ -13,9 +13,8 @@ This is a Python application that utilizes Google Gemini AI's capabilities to pr
 ## Prerequisites
 
 To run the chatbot, you'll need:
-- [Germini API token](https://aistudio.google.com/)
 - Python 3.8 or newer installed on your system.
-- Google Gemini AI API Key. Make sure you have a valid API key to use with the application.
+- Google Gemini AI API [Key]((https://aistudio.google.com/)). Make sure you have a valid API key to use with the application.
 
 ## Installation Guide
 
@@ -108,4 +107,4 @@ pyinstaller --onefile chatbot.py
   
 Running the Executable:
 Navigate to the dist directory and run the generated chatbot.exe file
-*Note: On the first run, some antivirus software may flag the executable. You may need to mark it as safe. *
+*Note: On the first run, some antivirus software may flag the executable. You may need to mark it as safe.*

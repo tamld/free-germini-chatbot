@@ -5,7 +5,7 @@ from cryptography.fernet import Fernet
 import base64
 import os
 from tkinterweb import HtmlFrame
-import markdown
+import markdown2
 import google.generativeai as genai
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
@@ -22,12 +22,13 @@ class ChatApp:
         self.chat_content = ""
         self.current_conversation = None
         self.model = None
-        self.selected_model = StringVar()
-        self.selected_model.set("gemini-exp-1114")
+        self.selected_model = "gemini-exp-1114"
         self.create_menu()
         self.chat_history = HtmlFrame(self.root, horizontal_scrollbar="auto", messages_enabled=False)
         self.chat_history.pack(pady=10, fill=tk.BOTH, expand=True)
         self.create_message_frame()
+        self.loading_label = tk.Label(self.root, text="", fg="grey", font="italic")
+        self.loading_label.pack(pady=5)
         self.load_api_key()
         if not self.api_key:
             self.show_api_key_window()
@@ -78,9 +79,12 @@ class ChatApp:
         frame.pack(pady=10)
         tk.Label(frame, text="Select Model:").pack(side=tk.LEFT)
         model_options = ["gemini-1.5-flash", "gemini-exp-1114"]
-        tk.OptionMenu(frame, self.selected_model, *model_options).pack(side=tk.LEFT, padx=5)
+        tk.OptionMenu(frame, StringVar(value=self.selected_model), *model_options, command=self.update_model).pack(side=tk.LEFT, padx=5)
         tk.Label(frame, text="Note: 'gemini-1.5-flash' is free, others may require payment.").pack(pady=5)
         tk.Button(frame, text="Confirm", command=model_window.destroy).pack(pady=5)
+
+    def update_model(self, selected):
+        self.selected_model = selected
 
     def verify_api_key(self, window):
         self.api_key = self.api_key_entry.get().strip()
@@ -89,7 +93,7 @@ class ChatApp:
             return
         try:
             genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel(self.selected_model.get())
+            self.model = genai.GenerativeModel(self.selected_model)
             messagebox.showinfo("Success", "API Key is valid!")
             self.save_api_key()
             window.destroy()
@@ -119,7 +123,7 @@ class ChatApp:
             try:
                 self.api_key = cipher_suite.decrypt(encrypted_api_key).decode()
                 genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel(self.selected_model.get())
+                self.model = genai.GenerativeModel(self.selected_model)
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load API Key: {str(e)}")
 
@@ -142,7 +146,8 @@ class ChatApp:
         self.message_entry.delete("1.0", tk.END)
         self.chat_content += f"<p>You: {user_message}</p>"
         self.chat_history.load_html(self.chat_content)
-        self.chat_history.yview_moveto(1.0)
+        self.scroll_to_end()
+        self.loading_label.config(text="AI is thinking...")
         self.stop_event.clear()
         self.conversation_thread = threading.Thread(target=self.get_ai_response, args=(user_message,))
         self.conversation_thread.start()
@@ -154,21 +159,25 @@ class ChatApp:
             response = self.current_conversation.send_message(user_message)
             ai_response = response.text.strip()
             formatted_response = self.format_ai_response(ai_response)
-            html_response = markdown.markdown(formatted_response, extensions=['fenced_code', 'codehilite'])
+            html_response = markdown2.markdown(formatted_response, extras=["fenced-code-blocks", "code-friendly"])
             self.chat_content += f"<p>AI: {html_response}</p>"
             self.chat_history.load_html(self.chat_content)
-            self.chat_history.yview_moveto(1.0)
+            self.loading_label.config(text="")
+            self.scroll_to_end()
         except Exception as e:
             error_message = f"Error: {str(e)}"
             self.chat_content += f"<p>{error_message}</p>"
             self.chat_history.load_html(self.chat_content)
-            self.chat_history.yview_moveto(1.0)
+            self.loading_label.config(text="")
+            self.scroll_to_end()
 
     def format_ai_response(self, response):
         lines = response.split("\n")
         formatted = []
         code_block = False
         current_lexer = None
+        code_lines = []
+
         for line in lines:
             if line.startswith("```"):
                 code_block = not code_block
@@ -178,23 +187,30 @@ class ChatApp:
                         current_lexer = get_lexer_by_name(language)
                     except Exception:
                         current_lexer = get_lexer_by_name("text")
-                    formatted.append("<pre><code>")
+                    code_lines = []
                 else:
-                    formatted.append("</code></pre>")
+                    # End of code block, highlight it
+                    if current_lexer:
+                        code_content = "\n".join(code_lines)
+                        formatter = HtmlFormatter()
+                        highlighted_code = highlight(code_content, current_lexer, formatter)
+                        formatted.append(f"<pre><code>{highlighted_code}</code></pre>")
+                    code_lines = []
                 continue
+
             if code_block:
-                if current_lexer:
-                    formatter = HtmlFormatter()
-                    line = highlight(line, current_lexer, formatter)
-                formatted.append(line)
+                code_lines.append(line)
             else:
                 formatted.append(line)
+
         return "\n".join(formatted)
+
+    def scroll_to_end(self):
+        self.chat_history.yview_moveto(1.0)
 
     def clear_chat_history(self):
         self.chat_content = ""
         self.chat_history.load_html("")
-        self.chat_history.yview_moveto(1.0)
         self.current_conversation = None
 
     def new_chat(self):
