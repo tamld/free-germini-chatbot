@@ -1,0 +1,5 @@
+tkinterweb
+cryptography
+markdown
+google-generativeai
+pygments
