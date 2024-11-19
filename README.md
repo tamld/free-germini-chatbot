@@ -13,7 +13,7 @@ This is a Python application that utilizes Google Gemini AI's capabilities to pr
 ## Prerequisites
 
 To run the chatbot, you'll need:
-
+- [Germini API token](https://aistudio.google.com/)
 - Python 3.8 or newer installed on your system.
 - Google Gemini AI API Key. Make sure you have a valid API key to use with the application.
 
