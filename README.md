@@ -69,12 +69,12 @@ pip install -r requirements.txt
 The application requires a master key for encryption purposes, which is set through an environment variable. Set this variable by running the following command:
 
 ```bash
-export MASTER_KEY=<Chat-API-key>
+export MASTER_KEY=<YOUR-SECRET-KEYS>
 ```
 or on Windows
 
 ```bash
-set MASTER_KEY=<Chat-API-key>
+set MASTER_KEY=<YOUR-SECRET-KEYS>
 ```
 
 ### 6. Running the Application
@@ -86,3 +86,26 @@ python chatbot.py
 or 
 python3 chatbot.py
 ```
+
+### 7. Packaging as an Executable File
+
+To package the Python application into an executable file (.exe), you can use PyInstaller. Follow these steps:
+
+Install PyInstaller:
+```bash
+pip install pyinstaller
+```
+
+Create the Executable:
+Run the following command to create an executable version of your script:
+
+```bash
+pyinstaller --onefile chatbot.py
+```
+  - The --onefile option ensures that all dependencies are packed into a single .exe file.
+
+  - After running this command, a dist directory will be created containing the chatbot.exe file.
+  
+Running the Executable:
+Navigate to the dist directory and run the generated chatbot.exe file
+*Note: On the first run, some antivirus software may flag the executable. You may need to mark it as safe. *
