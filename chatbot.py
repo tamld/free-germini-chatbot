@@ -1,15 +1,12 @@
 import tkinter as tk
-from tkinter import scrolledtext, messagebox, Menu, StringVar, OptionMenu
+from tkinter import scrolledtext, messagebox, Menu, StringVar, OptionMenu, simpledialog
 import threading
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 import base64
 import os
 from tkinterweb import HtmlFrame
 import markdown2
 import google.generativeai as genai
-from pygments import highlight
-from pygments.lexers import get_lexer_by_name
-from pygments.formatters import HtmlFormatter
 
 class ChatApp:
     def __init__(self, root):
@@ -22,14 +19,14 @@ class ChatApp:
         self.chat_content = ""
         self.current_conversation = None
         self.model = None
-        self.selected_model = "gemini-exp-1114"
+        self.selected_model = "gemini-exp-1121"
         self.create_menu()
         self.chat_history = HtmlFrame(self.root, horizontal_scrollbar="auto", messages_enabled=False)
         self.chat_history.pack(pady=10, fill=tk.BOTH, expand=True)
         self.create_message_frame()
         self.loading_label = tk.Label(self.root, text="", fg="grey", font="italic")
         self.loading_label.pack(pady=5)
-        self.load_api_key()
+        self.load_api_key()  # Load API key at startup, if available
         if not self.api_key:
             self.show_api_key_window()
 
@@ -62,14 +59,16 @@ class ChatApp:
     def show_api_key_window(self):
         api_key_window = tk.Toplevel(self.root)
         api_key_window.title("API Key Settings")
-        api_key_window.geometry("400x150")
+        api_key_window.geometry("400x200")
         frame = tk.Frame(api_key_window)
         frame.pack(pady=10)
         tk.Label(frame, text="API Key:").pack(side=tk.LEFT)
         self.api_key_entry = tk.Entry(frame, show="*", width=40)
         self.api_key_entry.pack(side=tk.LEFT, padx=5)
-        self.api_key_entry.bind("<Return>", lambda event: self.verify_api_key(api_key_window))
-        tk.Button(frame, text="Verify", command=lambda: self.verify_api_key(api_key_window)).pack(side=tk.LEFT)
+        tk.Label(api_key_window, text="Master Password:").pack(pady=5)
+        self.password_entry = tk.Entry(api_key_window, show="*", width=40)
+        self.password_entry.pack(pady=5)
+        tk.Button(api_key_window, text="Verify", command=lambda: self.verify_api_key(api_key_window)).pack(pady=5)
 
     def show_model_selection_window(self):
         model_window = tk.Toplevel(self.root)
@@ -78,34 +77,34 @@ class ChatApp:
         frame = tk.Frame(model_window)
         frame.pack(pady=10)
         tk.Label(frame, text="Select Model:").pack(side=tk.LEFT)
-        model_options = ["gemini-1.5-flash", "gemini-exp-1114"]
+        model_options = ["gemini-1.5-flash", "gemini-exp-1114", "gemini-exp-1121"]
         tk.OptionMenu(frame, StringVar(value=self.selected_model), *model_options, command=self.update_model).pack(side=tk.LEFT, padx=5)
-        tk.Label(frame, text="Note: 'gemini-1.5-flash' is free, others may require payment.").pack(pady=5)
-        tk.Button(frame, text="Confirm", command=model_window.destroy).pack(pady=5)
+        tk.Label(model_window, text="All models used are from the free version of Gemini.").pack(pady=5)
+        tk.Button(model_window, text="Confirm", command=model_window.destroy).pack(pady=5)
 
     def update_model(self, selected):
         self.selected_model = selected
 
     def verify_api_key(self, window):
         self.api_key = self.api_key_entry.get().strip()
-        if not self.api_key:
-            messagebox.showerror("Error", "API Key cannot be empty!")
+        master_password = self.password_entry.get().strip()
+        if not self.api_key or not master_password:
+            messagebox.showerror("Error", "API Key and Master Password cannot be empty!")
             return
         try:
+            # Verify API key with Google before saving it
             genai.configure(api_key=self.api_key)
             self.model = genai.GenerativeModel(self.selected_model)
             messagebox.showinfo("Success", "API Key is valid!")
-            self.save_api_key()
+            self.save_api_key(master_password)
             window.destroy()
         except Exception as e:
             messagebox.showerror("Error", f"Invalid API Key: {str(e)}")
             self.api_key = None
 
-    def save_api_key(self):
-        master_key = os.environ.get("MASTER_KEY")
-        if not master_key:
-            master_key = base64.urlsafe_b64encode(os.urandom(32))
-            os.environ["MASTER_KEY"] = master_key.decode()
+    def save_api_key(self, master_password):
+        # Ensure the master key is exactly 32 bytes
+        master_key = base64.urlsafe_b64encode(master_password.encode().ljust(32)[:32])
         cipher_suite = Fernet(master_key)
         encrypted_api_key = cipher_suite.encrypt(self.api_key.encode())
         with open("api_key.enc", "wb") as enc_file:
@@ -113,19 +112,27 @@ class ChatApp:
 
     def load_api_key(self):
         if os.path.exists("api_key.enc"):
-            master_key = os.environ.get("MASTER_KEY")
-            if not master_key:
-                messagebox.showerror("Error", "MASTER_KEY not found. Unable to load API Key.")
+            master_password = simpledialog.askstring("Master Password", "Enter Master Password:", show="*")
+            if not master_password:
+                messagebox.showerror("Error", "Master Password is required to load API Key.")
                 return
-            cipher_suite = Fernet(master_key)
-            with open("api_key.enc", "rb") as enc_file:
-                encrypted_api_key = enc_file.read()
             try:
+                # Ensure the master key is exactly 32 bytes
+                master_key = base64.urlsafe_b64encode(master_password.encode().ljust(32)[:32])
+                cipher_suite = Fernet(master_key)
+                with open("api_key.enc", "rb") as enc_file:
+                    encrypted_api_key = enc_file.read()
+                # Decrypt the API key to verify it with Google
                 self.api_key = cipher_suite.decrypt(encrypted_api_key).decode()
                 genai.configure(api_key=self.api_key)
                 self.model = genai.GenerativeModel(self.selected_model)
+                messagebox.showinfo("Success", "API Key loaded successfully!")
+            except InvalidToken:
+                messagebox.showerror("Error", "Invalid Master Password. Please try again.")
+                self.api_key = None
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load API Key: {str(e)}")
+                self.api_key = None
 
     def send_message_enter(self, event):
         self.send_message()
@@ -158,8 +165,7 @@ class ChatApp:
                 self.current_conversation = self.model.start_chat()
             response = self.current_conversation.send_message(user_message)
             ai_response = response.text.strip()
-            formatted_response = self.format_ai_response(ai_response)
-            html_response = markdown2.markdown(formatted_response, extras=["fenced-code-blocks", "code-friendly"])
+            html_response = markdown2.markdown(ai_response, extras=["fenced-code-blocks", "code-friendly"])
             self.chat_content += f"<p>AI: {html_response}</p>"
             self.chat_history.load_html(self.chat_content)
             self.loading_label.config(text="")
@@ -170,40 +176,6 @@ class ChatApp:
             self.chat_history.load_html(self.chat_content)
             self.loading_label.config(text="")
             self.scroll_to_end()
-
-    def format_ai_response(self, response):
-        lines = response.split("\n")
-        formatted = []
-        code_block = False
-        current_lexer = None
-        code_lines = []
-
-        for line in lines:
-            if line.startswith("```"):
-                code_block = not code_block
-                if code_block:
-                    language = line[3:].strip()
-                    try:
-                        current_lexer = get_lexer_by_name(language)
-                    except Exception:
-                        current_lexer = get_lexer_by_name("text")
-                    code_lines = []
-                else:
-                    # End of code block, highlight it
-                    if current_lexer:
-                        code_content = "\n".join(code_lines)
-                        formatter = HtmlFormatter()
-                        highlighted_code = highlight(code_content, current_lexer, formatter)
-                        formatted.append(f"<pre><code>{highlighted_code}</code></pre>")
-                    code_lines = []
-                continue
-
-            if code_block:
-                code_lines.append(line)
-            else:
-                formatted.append(line)
-
-        return "\n".join(formatted)
 
     def scroll_to_end(self):
         self.chat_history.yview_moveto(1.0)
